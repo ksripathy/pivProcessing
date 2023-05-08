@@ -12,6 +12,7 @@ def imageToDataPair(im1Location,im2Location):
     im2Width, im2Height = im2.size
     
     #Extract pixel data of images
+    #Pillow scans image left to right and top to bottom
     im1Pix = im1.load()
     im2Pix = im2.load()
     
@@ -27,6 +28,6 @@ def imageToDataPair(im1Location,im2Location):
         for j in range(im2Height):
             im2Data[i,j] = im2Pix[i,j]
             
-    return im1Data, im2Data
+    return im1Data, im2Data, im1Width, im1Height
 
     
