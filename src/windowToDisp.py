@@ -2,13 +2,18 @@ from scipy import signal as sig
 import numpy as np
 
 #Function to obtain displacement in pixels from a pair of interrogoation windows
-def windowToDisp(im1DataLocal,im2DataLocal):
+def windowToDisp(im1DataLocal,im2DataLocal, meanFilter=False):
     
-   windowWidth, windowHeight = np.shape(im1DataLocal) 
+   windowHeight, windowWidth = np.shape(im1DataLocal) 
    
    #Subtract mean value from window
-   im1DataFiltered = im1DataLocal - np.mean(im1DataLocal)
-   im2DataFiltered = im2DataLocal - np.mean(im2DataLocal)
+   if meanFilter:
+       im1DataFiltered = im1DataLocal - np.mean(im1DataLocal)
+       im2DataFiltered = im2DataLocal - np.mean(im2DataLocal)
+       
+   else:
+       im1DataFiltered = im1DataLocal
+       im2DataFiltered = im2DataLocal
    
    #Normalization factor
    normTerm = np.sqrt(np.sum(np.power(im1DataFiltered,2)) * np.sum(np.power(im2DataFiltered,2)))
@@ -35,13 +40,13 @@ def windowToDisp(im1DataLocal,im2DataLocal):
        #For zero displacement, max cross-corr will occur at the index of 
        #(windowWidth-1,windowHeight-1). Thus non-zero displacements will 
        #be computed with respect to this reference
-       avgWindowDispX = top2Indices[0][0] - (windowWidth - 1) 
-       avgWindowDispY = top2Indices[1][0] - (windowHeight - 1)
+       avgWindowDispY = top2Indices[0][0] - (windowHeight - 1) 
+       avgWindowDispX = top2Indices[1][0] - (windowWidth - 1)
        crossCorrSNR = crossCorrMapT1/crossCorrMapT2
        
    else:
-       avgWindowDispX = top2Indices[0][1] - (windowWidth - 1)
-       avgWindowDispY = top2Indices[1][1] - (windowHeight - 1)
+       avgWindowDispY = top2Indices[0][1] - (windowHeight - 1)
+       avgWindowDispX = top2Indices[1][1] - (windowWidth - 1)
        crossCorrSNR = crossCorrMapT2/crossCorrMapT1
 
    return avgWindowDispX, avgWindowDispY, crossCorrSNR
