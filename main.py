@@ -3,6 +3,9 @@ import sys
 from scipy import signal as sig
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.patches import Polygon
+
+from PIL import Image, ImageDraw
     
 
 #Configuring relative file locations
@@ -14,91 +17,57 @@ plotDir = os.path.join(homeDir,"plots")
 #Add src folder to python path
 sys.path.append(srcDir)
 
-from src.imageToDataPair import imageToDataPair
-from src.windowToDisp import windowToDisp
+from src.imageToDataPairV2 import imageToDataPairV2
+from src.pivInterrogation import pivInterrogation
+from src.probeVelocity import probeVelocity
+from src.imposePolygon import imposePolygon
 
-im1Data, im2Data,imWidth, imHeight = imageToDataPair(imDir + "/Image_0001_a.tif", imDir + "/Image_0001_b.tif")
+#Input parameters
+windowSize = 64
+meanFilter = True #SUbtract mean value from windows
+opticalMask = True #Replace pixel values with zero for locations at object
+maskFilter = True #Replace flowfield values with zero for regions with NaN SNR
+deltaT = 80e-6 #[m]
+pixelSize = 6.45e-6 #[m]
+opticMagnification = 0.1
+
+im1Data, im2Data, imWidth, imHeight = imageToDataPairV2(imDir + "/Image_0001_a.tif", imDir + "/Image_0001_b.tif", opticalMask)
 
 #Reproduce image
 
-fig1, ax1 = plt.subplots()
-ax1.imshow(np.transpose(im1Data), cmap='gray', vmin=0, vmax=255)
+pixelsX, pixelsY= np.meshgrid(np.arange(imWidth), np.arange(imHeight))
 
-fig2, ax2 = plt.subplots()
-ax2.imshow(np.transpose(im2Data))
+fig4, ax4 = plt.subplots()
+ax4.contourf(pixelsX, pixelsY, np.flip(im1Data, axis=0))
 
-windowSize = 64 #[px]
+windowsHorizontalPx, windowsVerticalPx, dispPxX, dispPxY, SNR = pivInterrogation(im1Data, im2Data, imWidth, imHeight, windowSize, meanFilter, maskFilter)
 
-#Divide image into interrogotation windows
-numberOfColumns = int(imWidth/windowSize) - 1
-numberOfRows = int(imHeight/windowSize) - 1
-numberOfWindows = numberOfColumns * numberOfRows
-numberOfScannedPixels = numberOfWindows * windowSize**2
+#FOV in mm
+windowsHorizontalMillimetres = windowsHorizontalPx * (pixelSize/opticMagnification)*1e3
+windowsVerticalMillimetres = windowsVerticalPx * (pixelSize/opticMagnification)*1e3
 
-#Numpy arrays
-windowsX = np.arange(numberOfColumns)
-windowsY = np.arange(numberOfRows)
-dispX = np.zeros((numberOfColumns,numberOfRows))
-dispY = np.zeros((numberOfColumns,numberOfRows))
-SNR = np.zeros((numberOfColumns,numberOfRows))
+#Displacements in object plane
+dispX = (dispPxX * pixelSize)/opticMagnification
+dispY = (dispPxY * pixelSize)/opticMagnification
 
-for j in range(numberOfRows):
-    for i in range(numberOfColumns):
-        
-        firstPixelX = i*windowSize
-        lastPixelX = (i+1)*windowSize
-        firstPixelY = j*windowSize
-        lastPixelY = (j+1)*windowSize
-        
-        dispLocalX, dispLocalY, SNRLocal = windowToDisp(im1Data[firstPixelX:lastPixelX,firstPixelY:lastPixelY], im2Data[firstPixelX:lastPixelX,firstPixelY:lastPixelY])
-        
-        dispX[i,j] = dispLocalX
-        dispY[i,j] = dispLocalY
-        SNR[i,j] = SNRLocal
-        
+#Velocities in object plane
+velX = dispX/deltaT
+velY = dispY/deltaT
 
 
+xArg, yArg = np.meshgrid(windowsHorizontalMillimetres,windowsVerticalMillimetres)
 
-'''im1DataLocal = im1Data[570:634,150:214]
-im2DataLocal = im2Data[570:634,150:214]
+polygonVertices = np.array([[194,409],[521,291],[640,610],[314,731]])*(pixelSize/opticMagnification)*1e3
 
-dispX, dispY, corrSNR = windowToDisp(im1DataLocal,im2DataLocal)'''
+fig6, ax6 = plt.subplots()
+ax6.contourf(xArg, yArg, SNR)
+ax6.add_patch(Polygon(polygonVertices))
+ax6.quiver(xArg, yArg, velX, velY)
 
-'''im1DataFiltered = im1DataLocal - np.mean(im1DataLocal)
-im2DataFiltered = im2DataLocal - np.mean(im2DataLocal)
+intpVelX, intpVelY, intpVelMag = probeVelocity(windowsHorizontalMillimetres, windowsVerticalMillimetres, velX, velY)
 
-normTerm = np.sqrt(np.sum(np.power(im1DataFiltered,2)) * np.sum(np.power(im2DataFiltered,2)))
+velFreestream = intpVelMag(0,0)
+print("Freestream velocity:",velFreestream)
 
-crossCorrMap = sig.correlate(im1DataFiltered,im1DataFiltered)
-
-top3 = np.argpartition(crossCorrMap, -3, axis=None)[-3:]
-top3Read = np.unravel_index(top3, crossCorrMap.shape)
-
-fig3,ax3 = plt.subplots()
-ax3.imshow(crossCorrMap)'''
-
-
-
-'''#Cross-correlation test
-im1DataCorrIm2Data = sig.correlate(im1Data[:64,:64], im2Data[:64,:64])
-im1DataCorrIm2Data2 = sig.correlate(im1Data[-64:,-64:], im2Data[-64:,-64:])
-im1DataCorrIm2Data3 = sig.correlate(im1Data[688:752,:64], im2Data[688:752,:64])
-
-im1DataReadStart = im1Data[:64,:64]
-im2DataReadStart = im2Data[:64,:64]
-im1DataReadEnd = im1Data[-64:,-64:]
-im2DataReadEnd = im2Data[-64:,-64:]
-
-#Top three entries in correlation matrix
-top3 = np.argpartition(im1DataCorrIm2Data,-3,axis=None)[-3:]
-top3Read = np.unravel_index(top3,im1DataCorrIm2Data.shape)
-
-top32 = np.argpartition(im1DataCorrIm2Data2,-3,axis=None)[-3:]
-top32Read = np.unravel_index(top32,im1DataCorrIm2Data2.shape)
-
-top33 = np.argpartition(im1DataCorrIm2Data3,-3,axis=None)[-3:]
-top33Read = np.unravel_index(top33,im1DataCorrIm2Data3.shape)
-
-#Highest entry
-top1 = im1DataCorrIm2Data.argmax()
-top1TwoDim = np.unravel_index(im1DataCorrIm2Data.argmax(),im1DataCorrIm2Data.shape)''' 
+velMaxRev = np.min(velX)
+print("Max reverse velocity:", velMaxRev)
